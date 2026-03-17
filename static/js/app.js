@@ -420,7 +420,7 @@
       });
 
       if (payload.restart && payload.restart.attempted && !payload.restart.success) {
-        showToast("Preset applied, but wg0 restart failed.", "error");
+        showToast(buildRestartFailureMessage("Preset applied, but wg0 restart failed.", payload.restart), "error");
       } else {
         showToast(payload.message || "Preset applied.", "success");
       }
@@ -448,7 +448,7 @@
         body: { backup_name: name },
       });
       if (payload.restart && payload.restart.attempted && !payload.restart.success) {
-        showToast("Backup restored, but wg0 restart failed.", "error");
+        showToast(buildRestartFailureMessage("Backup restored, but wg0 restart failed.", payload.restart), "error");
       } else {
         showToast(payload.message || "Backup restored.", "success");
       }
@@ -543,7 +543,7 @@
 
       renderValidation(payload.validation);
       if (payload.restart && payload.restart.attempted && !payload.restart.success) {
-        showToast("Config saved, but wg0 restart failed.", "error");
+        showToast(buildRestartFailureMessage("Config saved, but wg0 restart failed.", payload.restart), "error");
       } else {
         showToast(payload.message || "Config saved.", "success");
       }
@@ -634,6 +634,31 @@
   function handleApiError(error, fallbackMessage) {
     const message = error.message || fallbackMessage;
     showToast(message, "error");
+  }
+
+  function buildRestartFailureMessage(prefix, restartMeta) {
+    if (!restartMeta) {
+      return prefix;
+    }
+
+    const details = [];
+    if (restartMeta.message) {
+      details.push(restartMeta.message);
+    }
+
+    const stderrText =
+      (restartMeta.fallback && restartMeta.fallback.stderr) || restartMeta.stderr || "";
+    const stderrLine = stderrText
+      .split(/\r\n|\r|\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .at(-1);
+
+    if (stderrLine && !details.includes(stderrLine)) {
+      details.push(stderrLine);
+    }
+
+    return details.length ? `${prefix} ${details.join(" | ")}` : prefix;
   }
 
   async function boot() {

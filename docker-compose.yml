@@ -2,7 +2,9 @@ name: wg-web-app
 services:
   wg-web-app:
     container_name: wg-web-app
-    image: ghcr.io/xel1nax/wg-web-app:latest
+    image: wg-web-app:local
+    build:
+      context: .
     environment:
       - WG_APP_HOST=0.0.0.0
       - WG_APP_PORT=5000
@@ -21,6 +23,10 @@ services:
       - type: bind
         source: /etc/wireguard
         target: /etc/wireguard
+      - type: bind
+        source: /proc
+        target: /host/proc
+        read_only: true
       - type: bind
         source: ./configs
         target: /app/configs

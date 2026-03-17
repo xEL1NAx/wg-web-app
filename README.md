@@ -37,7 +37,7 @@ Open: <http://127.0.0.1:5000>
 3. Start services:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 4. Open: <http://127.0.0.1:5000>
@@ -51,12 +51,18 @@ docker compose down
 If port 5000 is busy:
 
 ```bash
-WG_APP_PORT_HOST=5001 docker compose up -d
+WG_APP_PORT_HOST=5001 docker compose up -d --build
 ```
 
 ## Docker Image
 
-Published image:
+Default compose image is built locally from this repo:
+
+```bash
+docker compose build
+```
+
+Published image (optional):
 
 ```bash
 docker pull ghcr.io/xel1nax/wg-web-app:latest
@@ -80,7 +86,9 @@ name: wg-web-app
 services:
   wg-web-app:
     container_name: wg-web-app
-    image: ghcr.io/xel1nax/wg-web-app:latest
+    image: wg-web-app:local
+    build:
+      context: .
     environment:
       - WG_APP_HOST=0.0.0.0
       - WG_APP_PORT=5000
@@ -100,12 +108,40 @@ services:
         source: /etc/wireguard
         target: /etc/wireguard
       - type: bind
+        source: /proc
+        target: /host/proc
+        read_only: true
+      - type: bind
         source: ./configs
         target: /app/configs
       - type: bind
         source: ./backups
         target: /app/backups
     restart: unless-stopped
+```
+
+### CasaOS Example (Confirmed Working)
+
+If you deploy with CasaOS and host paths under `/DATA`, use this pattern:
+
+```yaml
+services:
+  wg-web-app:
+    image: ghcr.io/xel1nax/wg-web-app:latest
+    network_mode: host
+    pid: host
+    privileged: true
+    environment:
+      - WG_ACTIVE_CONFIG_PATH=/etc/wireguard/wg0.conf
+      - WG_PRESET_DIR=/app/configs
+      - WG_BACKUP_DIR=/app/backups
+      - WG_RESTART_COMMAND=/usr/local/bin/restart-wireguard
+      - WG_SYSTEMD_UNIT=wg-quick@wg0
+    volumes:
+      - /etc/wireguard:/etc/wireguard
+      - /proc:/host/proc:ro
+      - /DATA/AppData/wg-web-app/configs:/app/configs
+      - /DATA/AppData/wg-web-app/backups:/app/backups
 ```
 
 ## Configuration
@@ -123,6 +159,7 @@ Environment variables:
 | `WG_APP_SECRET` | generated random | Flask session/CSRF secret |
 | `WG_RESTART_COMMAND` | `systemctl restart --now wg-quick@wg0` | Command used after apply/save/restore (Docker image default: `/usr/local/bin/restart-wireguard`) |
 | `WG_SYSTEMD_UNIT` | `wg-quick@wg0` | WireGuard systemd unit name used by `/usr/local/bin/restart-wireguard` |
+| `WG_NSENTER_TARGET_PID` | `1` | PID target used by restart helper for namespace entry (`nsenter -t`) |
 | `WG_BASIC_AUTH_USER` | unset | Enables Basic Auth when set with password |
 | `WG_BASIC_AUTH_PASSWORD` | unset | Enables Basic Auth when set with username |
 
@@ -155,7 +192,23 @@ python app.py
 - For this to work, the container must run with:
   - `pid: host`
   - `privileged: true`
+- The helper also tries `/host/proc/1/ns/*` namespace entry as a fallback.
 - If you prefer another method, override `WG_RESTART_COMMAND`
+
+### Restart Troubleshooting
+
+- If you see `Configured restart command is a no-op`, your runtime still uses `WG_RESTART_COMMAND=true` or another no-op value.
+- Ensure all three are present together:
+  - `pid: host`
+  - `privileged: true`
+  - `/proc:/host/proc:ro`
+- Quick checks:
+
+```bash
+docker compose exec wg-web-app sh -lc 'echo "$WG_RESTART_COMMAND"; cat /host/proc/1/comm'
+docker inspect wg-web-app --format 'Privileged={{.HostConfig.Privileged}} PidMode={{.HostConfig.PidMode}}'
+docker compose exec wg-web-app /usr/local/bin/restart-wireguard
+```
 
 ## Security and Permissions
 

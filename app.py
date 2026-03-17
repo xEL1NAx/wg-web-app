@@ -140,6 +140,66 @@ def create_app(settings: Settings | None = None) -> Flask:
         }
 
     def run_restart_command(delay_seconds: int = 0) -> dict[str, Any]:
+        def execute_restart(args_to_run: list[str]) -> dict[str, Any]:
+            executed = shlex.join(args_to_run)
+            try:
+                result = subprocess.run(
+                    args_to_run,
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                    check=False,
+                )
+            except FileNotFoundError as exc:
+                return {
+                    "attempted": True,
+                    "success": False,
+                    "message": f"Restart executable not found: {args_to_run[0]}",
+                    "stdout": "",
+                    "stderr": str(exc),
+                    "command": cfg.restart_command,
+                    "executed_command": executed,
+                    "delay_seconds": max(delay_seconds, 0),
+                }
+            except subprocess.TimeoutExpired as exc:
+                return {
+                    "attempted": True,
+                    "success": False,
+                    "message": f"Restart command timed out after {exc.timeout} seconds.",
+                    "stdout": exc.stdout or "",
+                    "stderr": exc.stderr or "",
+                    "command": cfg.restart_command,
+                    "executed_command": executed,
+                    "delay_seconds": max(delay_seconds, 0),
+                }
+            except OSError as exc:
+                return {
+                    "attempted": True,
+                    "success": False,
+                    "message": f"Restart command failed to launch: {exc}",
+                    "stdout": "",
+                    "stderr": str(exc),
+                    "command": cfg.restart_command,
+                    "executed_command": executed,
+                    "delay_seconds": max(delay_seconds, 0),
+                }
+
+            return {
+                "attempted": True,
+                "success": result.returncode == 0,
+                "message": (
+                    "Restart command executed successfully."
+                    if result.returncode == 0
+                    else f"Restart command exited with code {result.returncode}."
+                ),
+                "return_code": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "command": cfg.restart_command,
+                "executed_command": executed,
+                "delay_seconds": max(delay_seconds, 0),
+            }
+
         try:
             args = shlex.split(cfg.restart_command)
         except ValueError as exc:
@@ -168,69 +228,53 @@ def create_app(settings: Settings | None = None) -> Flask:
         if delay_seconds > 0:
             time.sleep(delay_seconds)
 
-        executed_command = shlex.join(args)
+        helper_path = Path("/usr/local/bin/restart-wireguard")
+        no_op_command = len(args) == 1 and args[0] in {"true", "/bin/true", ":"}
 
-        try:
-            result = subprocess.run(
-                args,
-                capture_output=True,
-                text=True,
-                timeout=20,
-                check=False,
-            )
-        except FileNotFoundError as exc:
-            return {
-                "attempted": True,
+        if no_op_command:
+            restart_result: dict[str, Any] = {
+                "attempted": False,
                 "success": False,
-                "message": f"Restart executable not found: {args[0]}",
-                "stdout": "",
-                "stderr": str(exc),
+                "message": (
+                    "Restart command is configured as a no-op. Attempting fallback restart helper."
+                ),
                 "command": cfg.restart_command,
-                "executed_command": executed_command,
-                "stripped_sudo": stripped_sudo,
                 "delay_seconds": max(delay_seconds, 0),
             }
-        except subprocess.TimeoutExpired as exc:
-            return {
-                "attempted": True,
-                "success": False,
-                "message": f"Restart command timed out after {exc.timeout} seconds.",
-                "stdout": exc.stdout or "",
-                "stderr": exc.stderr or "",
-                "command": cfg.restart_command,
-                "executed_command": executed_command,
-                "stripped_sudo": stripped_sudo,
-                "delay_seconds": max(delay_seconds, 0),
-            }
-        except OSError as exc:
-            return {
-                "attempted": True,
-                "success": False,
-                "message": f"Restart command failed to launch: {exc}",
-                "stdout": "",
-                "stderr": str(exc),
-                "command": cfg.restart_command,
-                "executed_command": executed_command,
-                "stripped_sudo": stripped_sudo,
-                "delay_seconds": max(delay_seconds, 0),
-            }
+        else:
+            restart_result = execute_restart(args)
 
-        return {
-            "attempted": True,
-            "success": result.returncode == 0,
-            "message": (
-                "Restart command executed successfully."
-                if result.returncode == 0
-                else f"Restart command exited with code {result.returncode}."
-            ),
-            "return_code": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "command": cfg.restart_command,
-            "executed_command": executed_command,
-            "stripped_sudo": stripped_sudo,
-            "delay_seconds": max(delay_seconds, 0),
-        }
+        restart_result["stripped_sudo"] = stripped_sudo
+
+        should_try_helper = (
+            not restart_result["success"]
+            and helper_path.exists()
+            and args
+            and str(helper_path) != args[0]
+            and ("systemctl" in cfg.restart_command or no_op_command)
+        )
+        if should_try_helper:
+            helper_result = execute_restart([str(helper_path)])
+            restart_result["fallback"] = helper_result
+            restart_result["attempted"] = helper_result.get("attempted", False)
+            if helper_result["success"]:
+                restart_result["attempted"] = True
+                restart_result["success"] = True
+                restart_result["return_code"] = 0
+                if no_op_command:
+                    restart_result["message"] = (
+                        "Configured restart command is a no-op, but fallback restart helper succeeded."
+                    )
+                else:
+                    restart_result["message"] = (
+                        "Primary restart command failed, but fallback restart helper succeeded."
+                    )
+            elif no_op_command:
+                restart_result["message"] = (
+                    "Configured restart command is a no-op and fallback restart helper failed."
+                )
+
+        return restart_result
 
     @app.before_request
     def enforce_security_layers():
@@ -443,8 +487,20 @@ def create_app(settings: Settings | None = None) -> Flask:
     def restart_wg():
         result = run_restart_command()
         if result["attempted"] and not result["success"]:
+            error_message = result.get("message", "Restart command failed.")
+            stderr_value = ""
+            fallback_meta = result.get("fallback")
+            if isinstance(fallback_meta, dict):
+                stderr_value = str(fallback_meta.get("stderr") or "")
+            if not stderr_value:
+                stderr_value = str(result.get("stderr") or "")
+
+            stderr_line = stderr_value.strip().splitlines()[-1] if stderr_value.strip() else ""
+            if stderr_line and stderr_line not in error_message:
+                error_message = f"{error_message} ({stderr_line})"
+
             return api_error(
-                result.get("message", "Restart command failed."),
+                error_message,
                 status=500,
                 restart=result,
             )
