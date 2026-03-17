@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WireGuard Config Console</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+    <script>
+      window.APP_BOOTSTRAP = {
+        activeConfigPath: {{ active_config_path|tojson }},
+        presetDir: {{ preset_dir|tojson }},
+        backupDir: {{ backup_dir|tojson }},
+        restartEnabled: {{ restart_enabled|tojson }},
+        authEnabled: {{ auth_enabled|tojson }}
+      };
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+
+    <header class="topbar glass">
+      <div>
+        <p class="kicker">Local Admin Utility</p>
+        <h1>WireGuard Config Console</h1>
+        <p class="muted" id="active-path-label">Active path: {{ active_config_path }}</p>
+      </div>
+      <div class="top-meta">
+        <span class="pill" id="active-file-meta">Loading file metadata...</span>
+        <span class="pill">Presets: <code>{{ preset_dir }}</code></span>
+        <span class="pill">Backups: <code>{{ backup_dir }}</code></span>
+      </div>
+    </header>
+
+    <div class="warning-banner">
+      Writing <code>{{ active_config_path }}</code> often requires root permissions. Run this app on a private admin box and protect access.
+    </div>
+
+    <main class="dashboard">
+      <section class="panel glass" id="source-panel">
+        <div class="panel-head">
+          <h2>Config Sources</h2>
+          <div class="segmented" role="tablist">
+            <button class="segment active" type="button" data-source-tab="active">Active</button>
+            <button class="segment" type="button" data-source-tab="presets">Presets</button>
+            <button class="segment" type="button" data-source-tab="paste">One-time paste</button>
+          </div>
+        </div>
+
+        <div class="source-view active" data-source-view="active">
+          <p class="muted">Load the currently active wg0.conf file into the editor.</p>
+          <button class="btn secondary" id="load-active-btn" type="button">Load Active Config Into Editor</button>
+        </div>
+
+        <div class="source-view" data-source-view="presets">
+          <div class="row split">
+            <input id="preset-search" type="search" placeholder="Filter preset files..." />
+            <button class="btn ghost" id="refresh-presets-btn" type="button">Refresh</button>
+          </div>
+          <div id="preset-list" class="scroll-list"></div>
+        </div>
+
+        <div class="source-view" data-source-view="paste">
+          <p class="muted">Single-use memory only. Pasted content is never stored in the preset library.</p>
+          <textarea id="paste-input" class="mini-editor" placeholder="Paste a full WireGuard config here..."></textarea>
+          <div class="row split upload-row">
+            <input id="upload-config-input" type="file" accept=".conf,text/plain" />
+            <button class="btn ghost" id="use-upload-btn" type="button">Extract Uploaded Config</button>
+          </div>
+          <p class="muted upload-note">
+            Upload only extracts file content into browser memory. It is not saved as a preset.
+          </p>
+          <div class="row">
+            <button class="btn secondary" id="use-paste-btn" type="button">Use Pasted Config In Editor</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel glass" id="editor-panel">
+        <div class="panel-head">
+          <h2>Editor</h2>
+          <span class="pill" id="source-badge">Source: active</span>
+        </div>
+
+        <div class="row controls-wrap">
+          <button class="btn ghost" id="parse-test-btn" type="button">Test Parse</button>
+          <button class="btn ghost" id="preview-btn" type="button">Preview Dry Run</button>
+          <button class="btn primary" id="save-btn" type="button">Write Active Config</button>
+          <button class="btn danger" id="restart-btn" type="button">Restart wg-quick@wg0</button>
+        </div>
+
+        <textarea id="editor-input" class="code-editor" spellcheck="false" placeholder="WireGuard config appears here..."></textarea>
+        <div class="row split muted">
+          <span id="editor-stats">0 lines</span>
+          <span>Shortcuts: <kbd>Ctrl/Cmd + Enter</kbd> preview, <kbd>Ctrl/Cmd + S</kbd> save</span>
+        </div>
+      </section>
+
+      <section class="panel glass" id="result-panel">
+        <div class="panel-head">
+          <h2>Preview Result</h2>
+          <div class="row compact">
+            <button class="btn ghost" id="copy-btn" type="button">Copy</button>
+            <button class="btn ghost" id="download-btn" type="button">Download</button>
+          </div>
+        </div>
+
+        <textarea id="result-output" class="code-editor" spellcheck="false" readonly placeholder="Dry-run output appears here."></textarea>
+        <div id="validation-box" class="validation-box"></div>
+      </section>
+
+      <section class="panel glass" id="diff-panel">
+        <div class="panel-head">
+          <h2>Side-by-Side Diff (Current vs Result)</h2>
+          <button class="btn ghost" id="clear-diff-btn" type="button">Clear Diff</button>
+        </div>
+
+        <div class="diff-wrap" id="diff-wrap">
+          <table class="diff-table" id="diff-table">
+            <thead>
+              <tr>
+                <th colspan="2">Current</th>
+                <th colspan="2">Result</th>
+              </tr>
+            </thead>
+            <tbody id="diff-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel glass" id="backups-panel">
+        <div class="panel-head">
+          <h2>Backups</h2>
+          <button class="btn ghost" id="refresh-backups-btn" type="button">Refresh</button>
+        </div>
+        <div class="scroll-list" id="backup-list"></div>
+      </section>
+    </main>
+
+    <div id="toast-region" class="toast-region" aria-live="polite"></div>
+  </body>
+</html>
