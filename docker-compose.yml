@@ -1,0 +1,18 @@
+services:
+  wg-web-app:
+    build: .
+    container_name: wg-web-app
+    ports:
+      - "${WG_APP_PORT_HOST:-5000}:5000"
+    environment:
+      WG_APP_HOST: 0.0.0.0
+      WG_APP_PORT: 5000
+      WG_ACTIVE_CONFIG_PATH: /data/wg0.conf
+      WG_PRESET_DIR: /app/configs
+      WG_BACKUP_DIR: /app/backups
+      WG_RESTART_COMMAND: "true"
+    volumes:
+      - ./configs:/app/configs
+      - ./backups:/app/backups
+      - ./data:/data
+    restart: unless-stopped

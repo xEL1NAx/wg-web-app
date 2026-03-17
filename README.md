@@ -42,6 +42,11 @@ wg-web-app/
 │   └── sample-client.conf
 ├── backups/
 │   └── .gitkeep
+├── data/
+│   └── .gitkeep
+├── Dockerfile
+├── .dockerignore
+├── docker-compose.yml
 ├── requirements.txt
 └── README.md
 ```
@@ -70,6 +75,53 @@ python app.py
 4. Open:
 
 - [http://127.0.0.1:5000](http://127.0.0.1:5000)
+
+## Docker
+
+### Build and run with Docker
+
+```bash
+docker build -t wg-web-app .
+docker run --rm -p 5000:5000 \
+  -v "$(pwd)/configs:/app/configs" \
+  -v "$(pwd)/backups:/app/backups" \
+  -v "$(pwd)/data:/data" \
+  wg-web-app
+```
+
+Then open:
+
+- [http://127.0.0.1:5000](http://127.0.0.1:5000)
+
+### Run with Docker Compose
+
+```bash
+docker compose up --build -d
+```
+
+If port `5000` is already in use on your host:
+
+```bash
+WG_APP_PORT_HOST=5001 docker compose up --build -d
+```
+
+Stop:
+
+```bash
+docker compose down
+```
+
+Container defaults:
+
+- `WG_APP_PORT_HOST=5000` (compose host port mapping)
+- `WG_APP_HOST=0.0.0.0`
+- `WG_APP_PORT=5000`
+- `WG_ACTIVE_CONFIG_PATH=/data/wg0.conf`
+- `WG_PRESET_DIR=/app/configs`
+- `WG_BACKUP_DIR=/app/backups`
+- `WG_RESTART_COMMAND=true`
+
+You can override any env var in `docker-compose.yml` or with `docker run -e ...`.
 
 ## Configuration
 
