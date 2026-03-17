@@ -93,6 +93,12 @@ Then open:
 
 - [http://127.0.0.1:5000](http://127.0.0.1:5000)
 
+Published image (GitHub Container Registry):
+
+```bash
+docker pull ghcr.io/xel1nax/wg-web-app:latest
+```
+
 ### Run with Docker Compose
 
 ```bash
