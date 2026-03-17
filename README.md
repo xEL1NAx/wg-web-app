@@ -1,107 +1,78 @@
 # WireGuard Config Console
 
-A local Flask web app for managing WireGuard `wg0.conf` with a polished dashboard.
+A Flask-based admin UI to view, validate, edit, and apply WireGuard config changes safely.
 
-## Features
+## What This App Does
 
-- View, edit, validate, preview, and write active WireGuard config
-- Configurable active config path (default: `/etc/wireguard/wg0.conf`)
-- Timestamped backups before each write (keeps newest 3, auto-deletes older backups)
-- Preset library from `./configs/` (including nested subfolders) with preview and apply
-- One-time pasted config workflow (memory only, never saved as preset)
-- Tailscale relay policy-routing block is enabled by default:
-  - added exactly once
-  - avoids duplicates
-  - inserted inside `[Interface]`
-- Validation checks (`[Interface]` required before write)
-- Side-by-side diff preview (current vs result)
-- Dry-run preview mode
-- Backup browser with restore
-- Download generated config
-- Parse test action
-- Auto-restart `wg-quick@wg0` 3 seconds after apply/save/restore plus manual restart button
-- Dark, responsive, custom UI with keyboard shortcuts
+- Manages active config at `/etc/wireguard/wg0.conf` (or a custom path)
+- Creates timestamped backups before writes (keeps latest 3)
+- Supports preset configs from `./configs` and one-time pasted configs
+- Provides dry-run preview, validation, and side-by-side diff before apply
+- Supports backup restore and config download
+- Optionally protects access with HTTP Basic Auth
 
-## Project Structure
+## Requirements
 
-```text
-wg-web-app/
-├── app.py
-├── services/
-│   ├── __init__.py
-│   └── config_service.py
-├── templates/
-│   └── index.html
-├── static/
-│   ├── css/
-│   │   └── styles.css
-│   └── js/
-│       └── app.js
-├── configs/
-│   ├── .gitkeep
-│   └── sample-client.conf
-├── backups/
-│   └── .gitkeep
-├── Dockerfile
-├── .dockerignore
-├── docker-compose.yml
-├── requirements.txt
-└── README.md
-```
+- Python 3.11+ (for local run)
+- Docker + Docker Compose (for container run)
+- Access to `/etc/wireguard/wg0.conf` on the host
 
-## Setup
+## Quick Start
 
-1. Create and activate a virtual environment.
+### Option A: Run Locally
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-2. Install dependencies.
-
-```bash
 pip install -r requirements.txt
-```
-
-3. Run the app.
-
-```bash
 python app.py
 ```
 
-4. Open:
+Open: <http://127.0.0.1:5000>
 
-- [http://127.0.0.1:5000](http://127.0.0.1:5000)
+### Option B: Run with Docker Compose
 
-## Docker
-
-### Build and run with Docker
+1. Ensure host path exists: `/etc/wireguard/wg0.conf`
+2. Start services:
 
 ```bash
-docker build -t wg-web-app .
-docker run --rm -p 5000:5000 \
-  -v /etc/wireguard:/etc/wireguard \
-  -v "$(pwd)/configs:/app/configs" \
-  -v "$(pwd)/backups:/app/backups" \
-  wg-web-app
+docker compose up -d
 ```
 
-This expects host `wg0.conf` at `/etc/wireguard/wg0.conf`.
+3. Open: <http://127.0.0.1:5000>
 
-Then open:
+Stop:
 
-- [http://127.0.0.1:5000](http://127.0.0.1:5000)
+```bash
+docker compose down
+```
 
-Published image (GitHub Container Registry):
+If port 5000 is busy:
+
+```bash
+WG_APP_PORT_HOST=5001 docker compose up -d
+```
+
+## Docker Image
+
+Published image:
 
 ```bash
 docker pull ghcr.io/xel1nax/wg-web-app:latest
 ```
 
-### Run with Docker Compose
+If GitHub Container Registry pull returns `403`, authenticate first:
 
-Sample `docker-compose.yml`:
+```bash
+docker logout ghcr.io
+echo "$GHCR_PAT" | docker login ghcr.io -u xEL1NAx --password-stdin
+```
+
+`GHCR_PAT` should include at least `read:packages` (and `repo` for private package access).
+
+## Docker Compose Reference
+
+Current compose file (`docker-compose.yml`):
 
 ```yaml
 name: wg-web-app
@@ -133,104 +104,70 @@ services:
     restart: unless-stopped
 ```
 
-Start:
-
-```bash
-docker compose up -d
-```
-
-If port `5000` is already in use on your host:
-
-```bash
-WG_APP_PORT_HOST=5001 docker compose up -d
-```
-
-Stop:
-
-```bash
-docker compose down
-```
-
-Container defaults:
-
-- `WG_APP_PORT_HOST=5000` (compose host port mapping)
-- `WG_APP_HOST=0.0.0.0`
-- `WG_APP_PORT=5000`
-- `WG_ACTIVE_CONFIG_PATH=/etc/wireguard/wg0.conf`
-- `WG_PRESET_DIR=/app/configs`
-- `WG_BACKUP_DIR=/app/backups`
-- `WG_RESTART_COMMAND=true`
-
-You can override any env var in `docker-compose.yml` or with `docker run -e ...`.
-
 ## Configuration
 
-The app is configured via environment variables.
+Environment variables:
 
-- `WG_ACTIVE_CONFIG_PATH` (default: `/etc/wireguard/wg0.conf`)
-- `WG_PRESET_DIR` (default: `./configs`)
-- `WG_BACKUP_DIR` (default: `./backups`)
-- `WG_APP_HOST` (default: `127.0.0.1`)
-- `WG_APP_PORT` (default: `5000`)
-- `WG_APP_DEBUG` (default: `false`)
-- `WG_APP_SECRET` (optional Flask secret key)
-- `WG_RESTART_COMMAND` (default: `systemctl restart wg-quick@wg0`)
-- `WG_BASIC_AUTH_USER` (optional)
-- `WG_BASIC_AUTH_PASSWORD` (optional)
+| Variable | Default | Description |
+|---|---|---|
+| `WG_ACTIVE_CONFIG_PATH` | `/etc/wireguard/wg0.conf` | Active WireGuard config file path |
+| `WG_PRESET_DIR` | `./configs` | Directory for preset `.conf` files |
+| `WG_BACKUP_DIR` | `./backups` | Directory for automatic backups |
+| `WG_APP_HOST` | `127.0.0.1` | Flask bind host |
+| `WG_APP_PORT` | `5000` | Flask listen port |
+| `WG_APP_DEBUG` | `false` | Flask debug mode |
+| `WG_APP_SECRET` | generated random | Flask session/CSRF secret |
+| `WG_RESTART_COMMAND` | `systemctl restart wg-quick@wg0` | Command used after apply/save/restore |
+| `WG_BASIC_AUTH_USER` | unset | Enables Basic Auth when set with password |
+| `WG_BASIC_AUTH_PASSWORD` | unset | Enables Basic Auth when set with username |
 
-### Example: change active config path
+Example:
 
 ```bash
 export WG_ACTIVE_CONFIG_PATH="/tmp/wg0.conf"
 python app.py
 ```
 
-## Preset Configs (`./configs`)
+## Usage Notes
 
-- Drop `.conf` files into the preset directory (subfolders are supported).
-- Open the **Presets** tab in the dashboard.
-- Subfolder entries are shown with their folder path in the preset list.
-- Use **Load For Preview** to inspect/edit before writing.
-- Use **Apply To Active** to write directly to active config.
-- Original preset files are never modified during apply.
+### Presets (`./configs`)
 
-## One-Time Pasted Config Behavior
+- Drop `.conf` files in `./configs` (subfolders supported)
+- Load for preview, then apply to active config if valid
+- Preset files are never modified by apply actions
 
-- The **One-time paste** tab accepts full config text.
-- You can upload a config file to extract its content into the editor.
-- Pasted text is only held in browser memory.
-- Uploaded file content is only held in browser memory.
-- It is not written to preset files automatically.
-- You can preview/transform/validate it and then explicitly write to active config.
-- Refreshing the page may discard the pasted text.
+### One-time Paste
 
-## Permissions Notes (`/etc/wireguard/wg0.conf`)
+- Paste/upload config text for temporary editing
+- Content stays in browser memory only
+- Nothing is saved as a preset unless you explicitly do so
 
-Writing to `/etc/wireguard/wg0.conf` usually requires elevated privileges.
+## Security and Permissions
 
-Options:
+- Writes are restricted to configured active config path
+- Preset and backup operations are path-scoped and traversal-protected
+- CSRF protection is enabled on mutating API calls
+- Optional HTTP Basic Auth is supported via env vars
 
-- Run app with permissions that can write the target file
-- Use a non-system path during development (`WG_ACTIVE_CONFIG_PATH=/tmp/wg0.conf`)
-- Configure appropriate filesystem permissions/ACLs for a dedicated admin user
-
-Keep this tool on a trusted private admin machine.
-
-## Security Notes
-
-- Writes are restricted to the configured active config path only
-- Backups/restores are restricted to configured backup directory
-- Preset loading is restricted to configured preset directory
-- Path traversal is blocked on preset and backup path operations
-- CSRF protection is enforced on mutating API calls
-- Optional HTTP Basic Auth is available via env vars
+For `/etc/wireguard/wg0.conf`, run with an account/container that has required write permissions.
 
 ## Keyboard Shortcuts
 
-- `Ctrl/Cmd + Enter`: preview dry run
-- `Ctrl/Cmd + S`: write active config
+- `Ctrl/Cmd + Enter`: Preview dry run
+- `Ctrl/Cmd + S`: Save active config
 
-## Development Tips
+## Project Structure
 
-- Start with `WG_ACTIVE_CONFIG_PATH=/tmp/wg0.conf` for safe local testing.
-- Check the **Backups** panel after writes and use restore if needed.
+```text
+wg-web-app/
+├── app.py
+├── services/
+├── templates/
+├── static/
+├── configs/
+├── backups/
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+└── README.md
+```
