@@ -104,24 +104,60 @@ docker pull ghcr.io/xel1nax/wg-web-app:latest
 Sample `docker-compose.yml`:
 
 ```yaml
+name: wg-web-app
 services:
   wg-web-app:
-    image: ghcr.io/xel1nax/wg-web-app:latest
+    cpu_shares: 90
+    command: []
     container_name: wg-web-app
-    ports:
-      - "${WG_APP_PORT_HOST:-5000}:5000"
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: "134217728"
     environment:
-      WG_APP_HOST: 0.0.0.0
-      WG_APP_PORT: 5000
-      WG_ACTIVE_CONFIG_PATH: /etc/wireguard/wg0.conf
-      WG_PRESET_DIR: /app/configs
-      WG_BACKUP_DIR: /app/backups
-      WG_RESTART_COMMAND: "true"
-    volumes:
-      - /etc/wireguard:/etc/wireguard
-      - ./configs:/app/configs
-      - ./backups:/app/backups
+      - WG_APP_HOST=0.0.0.0
+      - WG_APP_PORT=5000
+      - WG_ACTIVE_CONFIG_PATH=/etc/wireguard/wg0.conf
+      - WG_PRESET_DIR=/app/configs
+      - WG_BACKUP_DIR=/app/backups
+      - WG_RESTART_COMMAND=true
+    hostname: wg-web-app
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/bootstrap', timeout=2)
+      timeout: 3s
+      interval: 1m0s
+    image: ghcr.io/xel1nax/wg-web-app:latest
+    labels:
+      icon: https://www.wireguard.com/img/wireguard.svg
+    ports:
+      - target: 5000
+        published: "${WG_APP_PORT_HOST:-5000}"
+        protocol: tcp
     restart: unless-stopped
+    volumes:
+      - type: bind
+        source: /etc/wireguard
+        target: /etc/wireguard
+      - type: bind
+        source: ./configs
+        target: /app/configs
+      - type: bind
+        source: ./backups
+        target: /app/backups
+    devices: []
+    cap_add: []
+    networks:
+      - wg-web-app
+    privileged: false
+networks:
+  wg-web-app:
+    name: wg-web-app
 ```
 
 Start:
