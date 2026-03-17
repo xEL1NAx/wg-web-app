@@ -42,8 +42,6 @@ wg-web-app/
 │   └── sample-client.conf
 ├── backups/
 │   └── .gitkeep
-├── data/
-│   └── .gitkeep
 ├── Dockerfile
 ├── .dockerignore
 ├── docker-compose.yml
@@ -83,11 +81,13 @@ python app.py
 ```bash
 docker build -t wg-web-app .
 docker run --rm -p 5000:5000 \
+  -v /etc/wireguard:/etc/wireguard \
   -v "$(pwd)/configs:/app/configs" \
   -v "$(pwd)/backups:/app/backups" \
-  -v "$(pwd)/data:/data" \
   wg-web-app
 ```
+
+This expects host `wg0.conf` at `/etc/wireguard/wg0.conf`.
 
 Then open:
 
@@ -113,14 +113,14 @@ services:
     environment:
       WG_APP_HOST: 0.0.0.0
       WG_APP_PORT: 5000
-      WG_ACTIVE_CONFIG_PATH: /data/wg0.conf
+      WG_ACTIVE_CONFIG_PATH: /etc/wireguard/wg0.conf
       WG_PRESET_DIR: /app/configs
       WG_BACKUP_DIR: /app/backups
       WG_RESTART_COMMAND: "true"
     volumes:
+      - /etc/wireguard:/etc/wireguard
       - ./configs:/app/configs
       - ./backups:/app/backups
-      - ./data:/data
     restart: unless-stopped
 ```
 
@@ -147,7 +147,7 @@ Container defaults:
 - `WG_APP_PORT_HOST=5000` (compose host port mapping)
 - `WG_APP_HOST=0.0.0.0`
 - `WG_APP_PORT=5000`
-- `WG_ACTIVE_CONFIG_PATH=/data/wg0.conf`
+- `WG_ACTIVE_CONFIG_PATH=/etc/wireguard/wg0.conf`
 - `WG_PRESET_DIR=/app/configs`
 - `WG_BACKUP_DIR=/app/backups`
 - `WG_RESTART_COMMAND=true`
