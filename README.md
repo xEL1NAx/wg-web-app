@@ -101,14 +101,39 @@ docker pull ghcr.io/xel1nax/wg-web-app:latest
 
 ### Run with Docker Compose
 
+Sample `docker-compose.yml`:
+
+```yaml
+services:
+  wg-web-app:
+    image: ghcr.io/xel1nax/wg-web-app:latest
+    container_name: wg-web-app
+    ports:
+      - "${WG_APP_PORT_HOST:-5000}:5000"
+    environment:
+      WG_APP_HOST: 0.0.0.0
+      WG_APP_PORT: 5000
+      WG_ACTIVE_CONFIG_PATH: /data/wg0.conf
+      WG_PRESET_DIR: /app/configs
+      WG_BACKUP_DIR: /app/backups
+      WG_RESTART_COMMAND: "true"
+    volumes:
+      - ./configs:/app/configs
+      - ./backups:/app/backups
+      - ./data:/data
+    restart: unless-stopped
+```
+
+Start:
+
 ```bash
-docker compose up --build -d
+docker compose up -d
 ```
 
 If port `5000` is already in use on your host:
 
 ```bash
-WG_APP_PORT_HOST=5001 docker compose up --build -d
+WG_APP_PORT_HOST=5001 docker compose up -d
 ```
 
 Stop:
