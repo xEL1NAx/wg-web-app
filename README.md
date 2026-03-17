@@ -120,30 +120,6 @@ services:
     restart: unless-stopped
 ```
 
-### CasaOS Example (Confirmed Working)
-
-If you deploy with CasaOS and host paths under `/DATA`, use this pattern:
-
-```yaml
-services:
-  wg-web-app:
-    image: ghcr.io/xel1nax/wg-web-app:latest
-    network_mode: host
-    pid: host
-    privileged: true
-    environment:
-      - WG_ACTIVE_CONFIG_PATH=/etc/wireguard/wg0.conf
-      - WG_PRESET_DIR=/app/configs
-      - WG_BACKUP_DIR=/app/backups
-      - WG_RESTART_COMMAND=/usr/local/bin/restart-wireguard
-      - WG_SYSTEMD_UNIT=wg-quick@wg0
-    volumes:
-      - /etc/wireguard:/etc/wireguard
-      - /proc:/host/proc:ro
-      - /DATA/AppData/wg-web-app/configs:/app/configs
-      - /DATA/AppData/wg-web-app/backups:/app/backups
-```
-
 ## Configuration
 
 Environment variables:
