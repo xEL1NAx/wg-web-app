@@ -33,13 +33,14 @@ Open: <http://127.0.0.1:5000>
 ### Option B: Run with Docker Compose
 
 1. Ensure host path exists: `/etc/wireguard/wg0.conf`
-2. Start services:
+2. Ensure the host uses `systemd` (`systemctl` must manage `wg-quick@wg0`)
+3. Start services:
 
 ```bash
 docker compose up -d
 ```
 
-3. Open: <http://127.0.0.1:5000>
+4. Open: <http://127.0.0.1:5000>
 
 Stop:
 
@@ -86,11 +87,14 @@ services:
       - WG_ACTIVE_CONFIG_PATH=/etc/wireguard/wg0.conf
       - WG_PRESET_DIR=/app/configs
       - WG_BACKUP_DIR=/app/backups
-      - WG_RESTART_COMMAND=true
+      - WG_RESTART_COMMAND=/usr/local/bin/restart-wireguard
+      - WG_SYSTEMD_UNIT=wg-quick@wg0
     ports:
       - target: 5000
         published: "${WG_APP_PORT_HOST:-5000}"
         protocol: tcp
+    pid: host
+    privileged: true
     volumes:
       - type: bind
         source: /etc/wireguard
@@ -117,7 +121,8 @@ Environment variables:
 | `WG_APP_PORT` | `5000` | Flask listen port |
 | `WG_APP_DEBUG` | `false` | Flask debug mode |
 | `WG_APP_SECRET` | generated random | Flask session/CSRF secret |
-| `WG_RESTART_COMMAND` | `systemctl restart wg-quick@wg0` | Command used after apply/save/restore |
+| `WG_RESTART_COMMAND` | `systemctl restart --now wg-quick@wg0` | Command used after apply/save/restore (Docker image default: `/usr/local/bin/restart-wireguard`) |
+| `WG_SYSTEMD_UNIT` | `wg-quick@wg0` | WireGuard systemd unit name used by `/usr/local/bin/restart-wireguard` |
 | `WG_BASIC_AUTH_USER` | unset | Enables Basic Auth when set with password |
 | `WG_BASIC_AUTH_PASSWORD` | unset | Enables Basic Auth when set with username |
 
@@ -142,12 +147,23 @@ python app.py
 - Content stays in browser memory only
 - Nothing is saved as a preset unless you explicitly do so
 
+### Restarting `wg-quick@wg0` from Docker
+
+- The image includes `/usr/local/bin/restart-wireguard`
+- It restarts WireGuard through host `systemd` using `nsenter`:
+  - `systemctl restart --now wg-quick@wg0`
+- For this to work, the container must run with:
+  - `pid: host`
+  - `privileged: true`
+- If you prefer another method, override `WG_RESTART_COMMAND`
+
 ## Security and Permissions
 
 - Writes are restricted to configured active config path
 - Preset and backup operations are path-scoped and traversal-protected
 - CSRF protection is enabled on mutating API calls
 - Optional HTTP Basic Auth is supported via env vars
+- Host service restart requires elevated container privileges (`pid: host` + `privileged: true`)
 
 For `/etc/wireguard/wg0.conf`, run with an account/container that has required write permissions.
 
@@ -166,6 +182,8 @@ wg-web-app/
 ├── static/
 ├── configs/
 ├── backups/
+├── scripts/
+│   └── restart-wireguard.sh
 ├── Dockerfile
 ├── docker-compose.yml
 ├── requirements.txt

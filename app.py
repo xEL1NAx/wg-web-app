@@ -54,7 +54,7 @@ def load_settings() -> Settings:
         preset_dir=preset_dir,
         backup_dir=backup_dir,
         secret_key=secret_key,
-        restart_command=os.getenv("WG_RESTART_COMMAND", "systemctl restart wg-quick@wg0"),
+        restart_command=os.getenv("WG_RESTART_COMMAND", "systemctl restart --now wg-quick@wg0"),
         auth_username=os.getenv("WG_BASIC_AUTH_USER") or None,
         auth_password=os.getenv("WG_BASIC_AUTH_PASSWORD") or None,
     )
@@ -140,33 +140,95 @@ def create_app(settings: Settings | None = None) -> Flask:
         }
 
     def run_restart_command(delay_seconds: int = 0) -> dict[str, Any]:
-        args = shlex.split(cfg.restart_command)
+        try:
+            args = shlex.split(cfg.restart_command)
+        except ValueError as exc:
+            return {
+                "attempted": False,
+                "success": False,
+                "message": f"Restart command is invalid: {exc}",
+                "delay_seconds": 0,
+                "command": cfg.restart_command,
+            }
+
+        stripped_sudo = False
+        if args and args[0] == "sudo" and os.geteuid() == 0:
+            args = args[1:]
+            stripped_sudo = True
+
         if not args:
             return {
                 "attempted": False,
                 "success": False,
                 "message": "Restart command is empty.",
                 "delay_seconds": 0,
+                "command": cfg.restart_command,
             }
 
         if delay_seconds > 0:
             time.sleep(delay_seconds)
 
-        result = subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            timeout=20,
-            check=False,
-        )
+        executed_command = shlex.join(args)
+
+        try:
+            result = subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            return {
+                "attempted": True,
+                "success": False,
+                "message": f"Restart executable not found: {args[0]}",
+                "stdout": "",
+                "stderr": str(exc),
+                "command": cfg.restart_command,
+                "executed_command": executed_command,
+                "stripped_sudo": stripped_sudo,
+                "delay_seconds": max(delay_seconds, 0),
+            }
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "attempted": True,
+                "success": False,
+                "message": f"Restart command timed out after {exc.timeout} seconds.",
+                "stdout": exc.stdout or "",
+                "stderr": exc.stderr or "",
+                "command": cfg.restart_command,
+                "executed_command": executed_command,
+                "stripped_sudo": stripped_sudo,
+                "delay_seconds": max(delay_seconds, 0),
+            }
+        except OSError as exc:
+            return {
+                "attempted": True,
+                "success": False,
+                "message": f"Restart command failed to launch: {exc}",
+                "stdout": "",
+                "stderr": str(exc),
+                "command": cfg.restart_command,
+                "executed_command": executed_command,
+                "stripped_sudo": stripped_sudo,
+                "delay_seconds": max(delay_seconds, 0),
+            }
 
         return {
             "attempted": True,
             "success": result.returncode == 0,
+            "message": (
+                "Restart command executed successfully."
+                if result.returncode == 0
+                else f"Restart command exited with code {result.returncode}."
+            ),
             "return_code": result.returncode,
             "stdout": result.stdout,
             "stderr": result.stderr,
             "command": cfg.restart_command,
+            "executed_command": executed_command,
+            "stripped_sudo": stripped_sudo,
             "delay_seconds": max(delay_seconds, 0),
         }
 
@@ -382,7 +444,7 @@ def create_app(settings: Settings | None = None) -> Flask:
         result = run_restart_command()
         if result["attempted"] and not result["success"]:
             return api_error(
-                "Restart command failed.",
+                result.get("message", "Restart command failed."),
                 status=500,
                 restart=result,
             )

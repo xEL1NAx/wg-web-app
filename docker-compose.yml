@@ -9,11 +9,14 @@ services:
       - WG_ACTIVE_CONFIG_PATH=/etc/wireguard/wg0.conf
       - WG_PRESET_DIR=/app/configs
       - WG_BACKUP_DIR=/app/backups
-      - WG_RESTART_COMMAND=true
+      - WG_RESTART_COMMAND=/usr/local/bin/restart-wireguard
+      - WG_SYSTEMD_UNIT=wg-quick@wg0
     ports:
       - target: 5000
         published: "${WG_APP_PORT_HOST:-5000}"
         protocol: tcp
+    pid: host
+    privileged: true
     volumes:
       - type: bind
         source: /etc/wireguard
